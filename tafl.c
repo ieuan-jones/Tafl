@@ -10,6 +10,12 @@ struct State {
     char black_count;
 };
 
+struct MoveSet {
+    char moves[24][120][2];
+    char moves_per_piece[24];
+    short int move_count;
+};
+
 void add_piece(char type, char x, char y, struct State *state) {
     state->board[y][x] = type;
 
@@ -135,11 +141,11 @@ char list_legal_moves_for_piece(char p_x, char p_y, struct State *state, char mo
     return moves_found;
 }
 
-short int list_legal_moves(char side, struct State *state, char moves[24][120][2], char moves_per_piece[24]) {
+void list_legal_moves(char side, struct State *state, struct MoveSet *legal_moves) {
     char pieces[24][2];
     char piece_count;
     short int moves_found = 0;
-    short int running_total = 0;
+    legal_moves->move_count = 0;
 
     switch(side) {
         case 1:
@@ -153,12 +159,10 @@ short int list_legal_moves(char side, struct State *state, char moves[24][120][2
     }
 
     for(char i=0;i<piece_count;i++) {
-        moves_found = list_legal_moves_for_piece(pieces[i][0], pieces[i][1], state, moves[i]);
-        running_total += moves_found;
-        moves_per_piece[i] = moves_found;
+        moves_found = list_legal_moves_for_piece(pieces[i][0], pieces[i][1], state, legal_moves->moves[i]);
+        legal_moves->move_count += moves_found;
+        legal_moves->moves_per_piece[i] = moves_found;
     }
-    
-    return moves_found;
 }
 
 int main(int argc, char **argv) {
@@ -173,15 +177,14 @@ int main(int argc, char **argv) {
         printf("\n");
     }
 
-    char legal_moves[24][120][2];
-    char moves_per_piece[24];
-    char moves = list_legal_moves(2, &gameState, legal_moves, moves_per_piece);
+    struct MoveSet legal_moves;
+    list_legal_moves(2, &gameState, &legal_moves);
 
-    printf("%d\n", moves);
+    printf("%d\n", legal_moves.move_count);
 
     for(char i=0; i<24; i++)
-        for(char j=0; j<moves_per_piece[i]; j++)
-            printf("%d, %d/%d: %d, %d\n", i, j, moves_per_piece[i], legal_moves[i][j][0], legal_moves[i][j][1]);
+        for(char j=0; j<legal_moves.moves_per_piece[i]; j++)
+            printf("%d, %d/%d: %d, %d\n", i, j, legal_moves.moves_per_piece[i], legal_moves.moves[i][j][0], legal_moves.moves[i][j][1]);
 
     return 0;
 }
