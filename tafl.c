@@ -1,24 +1,56 @@
+#include "tafl.h"
 #include <stdio.h>
+#include <stdint.h>
 #include <string.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <time.h>
 
-struct State {
-    char board[11][11];
-    char white[12][2];
-    char black[24][2];
-    char king[2];
-    char white_count;
-    char black_count;
-};
+char type_to_side(char type) {
+    switch(type) {
+        case 1:
+            return 1;
+            break;
+        case 2:
+            return 2;
+            break;
+        case 3:
+            return 1;
+            break;
+        default:
+            return 0;
+            break;
+    }
+}
 
-struct MoveSet {
-    char moves[25][120][2];
-    char moves_per_piece[25];
-    short int move_count;
-};
+char opposite_side(char type) {
+    switch(type) {
+        case 1:
+            return 2;
+            break;
+        case 2:
+            return 1;
+            break;
+        case 3:
+            return 2;
+            break;
+        default:
+            return 0;
+            break;
+    }
+}
 
-void add_piece(char x, char y, char type, struct State *state) {
+uint8_t is_restricted_tile(uint8_t x, uint8_t y, uint8_t type) {
+    if(type == 3) return 0;
+    if(x == 0 && y == 0) return 1;
+    if(x == 0 && y == 10) return 1;
+    if(x == 10 && y == 0) return 1;
+    if(x == 10 && y == 10) return 1;
+    if(x == 5 && y == 5) return 1;
+    return 0;
+}
+
+void add_piece(uint8_t x, uint8_t y, uint8_t type, struct State *state) {
     state->board[y][x] = type;
 
     switch (type) {
@@ -39,14 +71,51 @@ void add_piece(char x, char y, char type, struct State *state) {
     }
 }
 
-void move_piece(char from_x, char from_y, char to_x, char to_y, char side, struct State *state) {
-    //printf("%d, %d | %d, %d\n", from_x, from_y, to_x, to_y);
-    state->board[from_y][from_x] = 0;
-    state->board[to_y][to_x] = side;
+void remove_piece(uint8_t x, uint8_t y, uint8_t type, struct State *state) {
+    //printf("%d, %d, %d\n", x, y, type);
+    if(state->board[y][x] != type) printf("PIECE NOT ON BOARD!\n");
+    state->board[y][x] = 0;
+    int8_t index = -1;
 
-    switch(side) {
+    switch (type) {
         case 1:
-            for(char i=0;i<state->white_count;i++) {
+            for(int8_t i=0;i<state->white_count;i++) {
+                if(state->white[i][0] == x && state->white[i][1] == y) {
+                    index = i;
+                    break;
+                }
+            }
+
+            if(index != -1) {
+                state->white[index][0] = state->white[state->white_count-1][0];
+                state->white[index][1] = state->white[state->white_count-1][1];
+                state->white_count--;
+            }
+            break;
+        case 2:
+            for(int8_t i=0;i<state->black_count;i++) {
+                if(state->black[i][0] == x && state->black[i][1] == y) {
+                    index = i;
+                    break;
+                }
+            }
+
+            if(index != -1) {
+                state->black[index][0] = state->black[state->black_count-1][0];
+                state->black[index][1] = state->black[state->black_count-1][1];
+                state->black_count--;
+            }
+            break;
+    }
+}
+
+void move_piece(uint8_t from_x, uint8_t from_y, uint8_t to_x, uint8_t to_y, uint8_t type, struct State *state) {
+    state->board[from_y][from_x] = 0;
+    state->board[to_y][to_x] = type;
+
+    switch(type) {
+        case 1:
+            for(int8_t i=0;i<state->white_count;i++) {
                 if(state->white[i][0] == from_x && state->white[i][1] == from_y) {
                     state->white[i][0] = to_x;
                     state->white[i][1] = to_y;
@@ -54,7 +123,7 @@ void move_piece(char from_x, char from_y, char to_x, char to_y, char side, struc
             }
             break;
         case 2:
-            for(char i=0;i<state->white_count;i++) {
+            for(int8_t i=0;i<state->black_count;i++) {
                 if(state->black[i][0] == from_x && state->black[i][1] == from_y) {
                     state->black[i][0] = to_x;
                     state->black[i][1] = to_y;
@@ -68,12 +137,225 @@ void move_piece(char from_x, char from_y, char to_x, char to_y, char side, struc
     }
 }
 
+char state_of_game(struct State *state) {
+    // 0 - continue play
+    // 1 - draw
+    // 2 - white win
+    // 3 - black win
+    
+    uint8_t k_x = state->king[0];
+    uint8_t k_y = state->king[1];
+    uint8_t w_pc = state->white_count;
+    
+    // King escaped
+    if(k_x == 0 && k_y == 0) return 2;
+    if(k_x == 0 && k_y == 10) return 2;
+    if(k_x == 10 && k_y == 0) return 2;
+    if(k_x == 10 && k_y == 10) return 2;
+
+    // King surrounded
+    if(state->turn == 1 &&
+        ((k_x > 0 && state->board[k_y][k_x-1] == 2) || (k_x == 6 && k_y == 5) || (w_pc == 0 && k_x == 0)) &&
+        ((k_x < 10 && state->board[k_y][k_x+1] == 2) || (k_x == 4 && k_y == 5) || (w_pc == 0 && k_x == 10)) &&
+        ((k_y > 0 && state->board[k_y-1][k_x] == 2) || (k_x == 5 && k_y == 6) || (w_pc == 0 && k_y == 0)) &&
+        ((k_y < 10 && state->board[k_y+1][k_x] == 2) || (k_x == 5 && k_y == 4) || (w_pc == 0 && k_y == 10))) {
+        return 3;
+    }
+
+    // White surrounded
+    uint8_t broken = 0;
+    uint8_t first_colour = 0;
+    uint8_t last_colour = 0;
+    int8_t left = 0;
+    int8_t right = 0;
+    int8_t p_left = 0;
+    int8_t p_right = 0;
+    for(int8_t x=0;x<11;x++) {
+        first_colour = 0;
+        last_colour = 0;
+        p_left = left;
+        p_right = right;
+        left = -1;
+        right = -1;
+        for(int8_t y=0;y<11;y++) {
+            switch(type_to_side(state->board[y][x])) {
+                case 0:
+                    break;
+                case 1:
+                    if(first_colour == 0) first_colour = 1;
+                    last_colour = 1;
+                    break;
+                case 2:
+                    if(left == -1) left = x;
+                    if(first_colour == 0) first_colour = 2;
+                    right = x;
+                    last_colour = 2;
+                    break;
+            }
+        }
+        if(first_colour == 1) {
+            broken = 1;
+            break;
+        }
+        if(last_colour == 1) {
+            broken = 1;
+            break;
+        }
+        if(x > 0 && left > -1 && abs(p_left-left) > 1) {
+            broken = 1;
+            break;
+        }
+        if(x > 0 && right > -1 && abs(p_right-right) > 1) {
+            broken = 1;
+            break;
+        }
+        if(broken) return 0;
+    }
+
+    for(int8_t y=0;y<11;y++) {
+        first_colour = 0;
+        last_colour = 0;
+        p_left = left;
+        p_right = right;
+        left = -1;
+        right = -1;
+        for(int8_t x=0;x<11;x++) {
+            switch(type_to_side(state->board[y][x])) {
+                case 0:
+                    break;
+                case 1:
+                    if(first_colour == 0) first_colour = 1;
+                    last_colour = 1;
+                    break;
+                case 2:
+                    if(left == -1) left = x;
+                    if(first_colour == 0) first_colour = 2;
+                    right = x;
+                    last_colour = 2;
+                    break;
+            }
+        }
+        if(first_colour == 1) {
+            broken = 1;
+            break;
+        }
+        if(y > 0 && left > -1 && abs(p_left-left) > 1) {
+           broken = 1;
+           break;
+        }
+        if(y > 0 && right > -1 && abs(p_right-right) > 1) {
+            broken = 1;
+            break;
+        }
+        if(broken) return 0;
+    }
+
+    if(!broken) return 3;
+
+    return 0;
+}
+
+uint8_t tile_has_takeable_piece(uint8_t x, uint8_t y, uint8_t type, struct State *state) {
+    // Does the tile have a piece that can be taken?
+    uint8_t checked_square = state->board[y][x];
+
+    if(checked_square != 0 && checked_square != 3 && type_to_side(checked_square) != type_to_side(type))
+        return 1;
+
+    return 0;
+}
+
+uint8_t tile_has_defender(uint8_t x, uint8_t y, uint8_t type, struct State *state) {
+    // Can tile can be used for taking?
+    uint8_t checked_square = type_to_side(state->board[y][x]);
+
+    if((checked_square != 0 && checked_square == type_to_side(type)) ||
+            is_restricted_tile(x, y, 1))
+            return 1;
+
+    return 0;
+}
+
+int do_captures(uint8_t to_x, uint8_t to_y, uint8_t type, struct State *state) {
+    if(to_y > 1 && to_y < 9) {
+        if(tile_has_takeable_piece(to_x, to_y-1, type, state) && tile_has_defender(to_x, to_y-2, type, state)) {
+            remove_piece(to_x, to_y-1, opposite_side(type), state);
+            return 1;
+        }
+        if(tile_has_takeable_piece(to_x, to_y+1, type, state) && tile_has_defender(to_x, to_y+2, type, state)) {
+            remove_piece(to_x, to_y+1, opposite_side(type), state);
+            return 1;
+        }
+    }
+    if(to_x > 1 && to_x < 9) {
+        if(tile_has_takeable_piece(to_x-1, to_y, type, state) && tile_has_defender(to_x-2, to_y, type, state)) {
+            remove_piece(to_x-1, to_y, opposite_side(type), state);
+            return 1;
+        }
+        if(tile_has_takeable_piece(to_x+1, to_y, type, state) && tile_has_defender(to_x+2, to_y, type, state)) {
+            remove_piece(to_x+1, to_y, opposite_side(type), state);
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+int do_move(uint8_t piece, uint8_t move, struct MoveSet *moves, struct State *state) {
+    uint8_t from_x = 0;
+    uint8_t from_y = 0;
+    uint8_t type = 0;
+    uint8_t result = 0;
+
+    switch(state->turn) {
+        case 0:
+            if(piece < state->white_count) {
+                from_x = state->white[piece][0];
+                from_y = state->white[piece][1];
+                type = 1;
+            } else {
+                from_x = state->king[0];
+                from_y = state->king[1];
+                type = 3;
+            }
+            break;
+        case 1:
+            from_x = state->black[piece][0];
+            from_y = state->black[piece][1];
+            type = 2;
+            break;
+    }
+
+    move_piece(
+        from_x,
+        from_y,
+        moves->moves[piece][move][0],
+        moves->moves[piece][move][1],
+        type,
+        state
+    );
+
+    do_captures(
+        moves->moves[piece][move][0],
+        moves->moves[piece][move][1],
+        type,
+        state
+    );
+
+    result = state_of_game(state);
+
+    state->turn = 1-state->turn;
+
+    return result;
+}
+
 void initialise_state(struct State *state) {
     state->white_count = 0;
     state->black_count = 0;
+    state->turn = 0;
 
-    for(short int x=0; x<11; x++) {
-        for(short int y=0; y<11; y++) {
+    for(int8_t x=0; x<11; x++) {
+        for(int8_t y=0; y<11; y++) {
             add_piece(x, y, 0, state);
         }
     }
@@ -122,20 +404,10 @@ void initialise_state(struct State *state) {
     add_piece(5, 5, 3, state);
 }
 
-char is_restricted_tile(char x, char y, char type) {
-    if(type == 3) return 0;
-    if(x == 0 && y == 0) return 1;
-    if(x == 0 && y == 10) return 1;
-    if(x == 10 && y == 0) return 1;
-    if(x == 10 && y == 10) return 1;
-    if(x == 5 && y == 5) return 1;
-    return 0;
-}
+uint8_t list_legal_moves_for_piece(uint8_t p_x, uint8_t p_y, uint8_t type, struct State *state, uint8_t moves[120][2]) {
+    uint8_t moves_found = 0;
 
-char list_legal_moves_for_piece(char p_x, char p_y, char type, struct State *state, char moves[120][2]) {
-    char moves_found = 0;
-
-    for(char x=p_x; x>=0; x--) {
+    for(int8_t x=p_x; x>=0; x--) {
         if(x != p_x && state->board[p_y][x] != 0) {
             break;
         }
@@ -146,7 +418,7 @@ char list_legal_moves_for_piece(char p_x, char p_y, char type, struct State *sta
         }
     }
 
-    for(char x=p_x; x<11; x++) {
+    for(int8_t x=p_x; x<11; x++) {
         if(x != p_x && state->board[p_y][x] != 0) {
             break;
         }
@@ -157,7 +429,7 @@ char list_legal_moves_for_piece(char p_x, char p_y, char type, struct State *sta
         }
     }
 
-    for(char y=p_y; y>=0; y--) {
+    for(int8_t y=p_y; y>=0; y--) {
         if(y != p_y && state->board[y][p_x] != 0) {
             break;
         }
@@ -168,7 +440,7 @@ char list_legal_moves_for_piece(char p_x, char p_y, char type, struct State *sta
         }
     }
 
-    for(char y=p_y; y<11; y++) {
+    for(int8_t y=p_y; y<11; y++) {
         if(y != p_y && state->board[y][p_x] != 0) {
             break;
         }
@@ -182,9 +454,9 @@ char list_legal_moves_for_piece(char p_x, char p_y, char type, struct State *sta
     return moves_found;
 }
 
-void list_legal_moves(char side, struct State *state, struct MoveSet *legal_moves) {
-    char pieces[25][2];
-    char piece_count;
+void list_legal_moves(uint8_t side, struct State *state, struct MoveSet *legal_moves) {
+    uint8_t pieces[BLACK_PIECE_COUNT][2];
+    uint8_t piece_count = 0;
     short int moves_found = 0;
     legal_moves->move_count = 0;
 
@@ -199,7 +471,7 @@ void list_legal_moves(char side, struct State *state, struct MoveSet *legal_move
             break;
     }
 
-    for(char i=0;i<piece_count;i++) {
+    for(int8_t i=0;i<piece_count;i++) {
         moves_found = list_legal_moves_for_piece(pieces[i][0], pieces[i][1], side, state, legal_moves->moves[i]);
         legal_moves->move_count += moves_found;
         legal_moves->moves_per_piece[i] = moves_found;
@@ -210,145 +482,104 @@ void list_legal_moves(char side, struct State *state, struct MoveSet *legal_move
         legal_moves->move_count += moves_found;
         legal_moves->moves_per_piece[piece_count] = moves_found;
     }
-}
 
-char state_of_game(struct State *state) {
-    // 0 - continue play
-    // 1 - draw
-    // 2 - white win
-    // 3 - black win
-    
-    char k_x = state->king[0];
-    char k_y = state->king[1];
-    char w_pc = state->white_count;
-    
-    // King escaped
-    if(k_x == 0 && k_y == 0) return 2;
-    if(k_x == 0 && k_y == 10) return 2;
-    if(k_x == 10 && k_y == 0) return 2;
-    if(k_x == 10 && k_y == 10) return 2;
-
-    // King surrounded
-    if((state->board[k_y][k_x-1] == 2 || k_x == 6 || (w_pc == 0 && k_x == 0)) &&
-        (state->board[k_y][k_x+1] == 2 || k_x == 4 || (w_pc == 0 && k_x == 10)) &&
-        (state->board[k_y-1][k_x] == 2 || k_y == 6 || (w_pc == 0 && k_y == 0)) &&
-        (state->board[k_y+1][k_x] == 2 || k_y == 6 || (w_pc == 0 && k_y == 10))) {
-        return 3;
-    }
-
-    // White surrounded
-    char seen;
-    char unbroken = 0;
-    for(char y=0;y<11;y++) {
-        seen = 0;
-        for(char x=0;x<11;x++) {
-            switch (state->board[y][x]) {
-                case 0:
-                    break;
-                case 1:
-                    if(seen == 0) seen = 1; // Far left counter is white
-                    if(seen == 2) seen = 3;
-                    break;
-                case 2:
-                    seen = 2;
-                    break;
-            }
-            if(seen == 1) {
-                break;
-            }
+    /*if(side == 2) {
+        for(int8_t i=0;i<state->black_count;i++) {
+            if(side == 1) printf("%d, %d\n", state->black[i][0], state->black[i][1]);
+            for(int8_t j=0;j<legal_moves->moves_per_piece[i];j++)
+                printf("[%d,%d], ", legal_moves->moves[i][j][0], legal_moves->moves[i][j][1]);
+            printf("\n");
         }
-        if(seen == 0 && unbroken) unbroken = 2; // A line lacking tiles after one surrounded with black
-        if(seen == 1 || seen == 3) return 0; // Outside white counter
-        if(seen == 2 && unbroken == 2) return 0; // We have a gap
-        if(seen == 2) unbroken = 1; // Black on the outside
-    }
-
-    unbroken = 0;
-    for(char x=0;x<11;x++) {
-        seen = 0;
-        for(char y=0;y<11;y++) {
-            switch (state->board[y][x]) {
-                case 0:
-                    break;
-                case 1:
-                    if(seen == 0) seen = 1; // Far left counter is white
-                    if(seen == 2) seen = 3;
-                    break;
-                case 2:
-                    seen = 2;
-                    break;
-            }
-            if(seen == 1) {
-                break;
-            }
-        }
-        if(seen == 0 && unbroken) unbroken = 2; // A line lacking tiles after one surrounded with black
-        if(seen == 1 || seen == 3) return 0; // Outside white counter
-        if(seen == 2 && unbroken == 2) return 0; // We have a gap
-        if(seen == 2) unbroken = 1; // Black on the outside
-    }
-
-    return 0;
+    }*/
 }
 
 void draw_board(struct State *state) {
-    for(char y=0; y<11; y++) {
-        for(char x=0; x<11; x++) {
+    for(int8_t y=0; y<11; y++) {
+        for(int8_t x=0; x<11; x++) {
             if (state->board[y][x] == 0) printf(".");
             else printf("%d", state->board[y][x]);
         }
         printf("\n");
     }
-    for(char x=0; x<11; x++) printf("=");
+    for(int x=0; x<11; x++) printf("=");
     printf("\n\n");
+}
+
+int8_t ai_pick_piece(struct MoveSet *moves, struct State *state) {
+    int8_t good_piece = -1;
+    uint8_t i = 0;
+    uint8_t piece = 0;
+
+    while(good_piece == -1 && i < 100) {
+        switch(state->turn) {
+            case 0:
+                piece = rand() % (state->white_count+1);
+                break;
+            case 1:
+                piece = rand() % (state->black_count);
+                break;
+        }
+        if(moves->moves_per_piece[piece] > 0) good_piece = piece;
+        i++;
+    }
+
+    return good_piece;
 }
 
 int main(int argc, char **argv) {
     struct State gameState;
     struct MoveSet legal_moves;
-    char piece;
-    char counter;
-    char good_piece;
+    int8_t piece;
+    int white_wins = 0;
+    int black_wins = 0;
+    int draws = 0;
     short int move;
+    long int total_moves = 0;
+    uint8_t result;
+    int seed = time(NULL);
+    srand(seed);
     
     initialise_state(&gameState);
     draw_board(&gameState);
 
-    state_of_game(&gameState);
     int i;
-    for(i=0;i<100000;i++){
-        list_legal_moves(1, &gameState, &legal_moves);
-        good_piece = 0;
-        counter = 0;
-        while(!good_piece && counter < 100) {
-            piece = rand() % gameState.white_count+1; 
-            if(legal_moves.moves_per_piece[piece] > 0) good_piece = 1;
-            counter++;
-        }
-        if(counter == 100) break;
-        move = rand() % legal_moves.moves_per_piece[piece];
-        if(piece < gameState.white_count)
-            move_piece(gameState.white[piece][0], gameState.white[piece][1], legal_moves.moves[piece][move][0], legal_moves.moves[piece][move][1], 1, &gameState);
-        else
-            move_piece(gameState.king[0], gameState.king[1], legal_moves.moves[piece][move][0], legal_moves.moves[piece][move][1], 3, &gameState);
-        if(state_of_game(&gameState)) break;
+    for(i=0;i<10000;i++) {
+        initialise_state(&gameState);
+        while(1) {
+            list_legal_moves(gameState.turn+1, &gameState, &legal_moves);
+            piece = ai_pick_piece(&legal_moves, &gameState);
 
-        list_legal_moves(2, &gameState, &legal_moves);
-        good_piece = 0;
-        counter = 0;
-        while(!good_piece && counter < 100) {
-            piece = rand() % gameState.black_count;
-            if(legal_moves.moves_per_piece[piece] > 0) good_piece = 1;
-            counter++;
+            if(piece != -1) {
+                move = rand() % legal_moves.moves_per_piece[piece];
+                result = do_move(piece, move, &legal_moves, &gameState);
+                if(result == 1) {
+                    draws++;
+                    break;
+                } else if(result == 2) {
+                    white_wins++;
+                    break;
+                } else if(result == 3) {
+                    black_wins++;
+                    break;
+                }
+                total_moves++;
+            } else {
+                switch(gameState.turn) {
+                    case 0:
+                        black_wins++;
+                        break;
+                    case 1:
+                        white_wins++;
+                        break;
+                }
+                break;
+            }
         }
-        if(counter == 100) break;
-        move = rand() % legal_moves.moves_per_piece[piece];
-        move_piece(gameState.black[piece][0], gameState.black[piece][1], legal_moves.moves[piece][move][0], legal_moves.moves[piece][move][1], 2, &gameState);
-        if(state_of_game(&gameState)) break;
     }
 
-    draw_board(&gameState);
-    printf("Moves: %d\n", i);
+    //draw_board(&gameState);
+    printf("Moves: %ld\n", total_moves);
+    printf("W|D|L: %d, %d, %d\n", white_wins, draws, black_wins);
 
     return 0;
 }
