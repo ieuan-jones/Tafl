@@ -147,6 +147,9 @@ char state_of_game(struct State *state) {
     uint8_t k_y = state->king[1];
     uint8_t w_pc = state->white_count;
     
+
+    if(state->black_count == 0) return 2;
+
     // King escaped
     if(k_x == 0 && k_y == 0) return 2;
     if(k_x == 0 && k_y == 10) return 2;
@@ -250,7 +253,10 @@ char state_of_game(struct State *state) {
         if(broken) return 0;
     }
 
-    if(!broken) return 3;
+    if(!broken) {
+        printf("Surrounded!");
+        return 3;
+    }
 
     return 0;
 }
@@ -537,14 +543,16 @@ int main(int argc, char **argv) {
     long int total_moves = 0;
     uint8_t result;
     int seed = time(NULL);
+    short int moves;
     srand(seed);
     
     initialise_state(&gameState);
     draw_board(&gameState);
 
     int i;
-    for(i=0;i<10000;i++) {
+    for(i=0;i<1000000;i++) {
         initialise_state(&gameState);
+        moves = 0;
         while(1) {
             list_legal_moves(gameState.turn+1, &gameState, &legal_moves);
             piece = ai_pick_piece(&legal_moves, &gameState);
@@ -574,6 +582,16 @@ int main(int argc, char **argv) {
                 }
                 break;
             }
+            moves++;
+            if(moves > 150) {
+                draws++;
+                break;
+            }
+        }
+        if(i%50000 == 0) {
+            draw_board(&gameState);
+            printf("Moves: %ld\n", total_moves);
+            printf("W|D|L: %d, %d, %d\n", white_wins, draws, black_wins);
         }
     }
 
