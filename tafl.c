@@ -1,4 +1,5 @@
 #include "tafl.h"
+#include <pthread.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
@@ -532,25 +533,110 @@ int8_t ai_pick_piece(struct MoveSet *moves, struct State *state) {
     return good_piece;
 }
 
-int main(int argc, char **argv) {
-    struct State gameState;
+void *calculate_results_thread(void *arg) {
+    struct ComputeThreadResults *ctr = (struct ComputeThreadResults *)arg;
+    struct State game_state;
     struct MoveSet legal_moves;
     int8_t piece;
-    int white_wins = 0;
-    int black_wins = 0;
-    int draws = 0;
     short int move;
-    long int total_moves = 0;
     uint8_t result;
-    int seed = time(NULL);
     short int moves;
-    srand(seed);
+    int white_wins = 0;
+    int draws = 0;
+    int black_wins = 0;
+    int total_moves = 0;
+    unsigned int seed = time(NULL);
+
+    for(int i=0;i<100000;i++) {
+        initialise_state(&game_state);
+        moves = 0;
+        while(1) {
+            list_legal_moves(game_state.turn+1, &game_state, &legal_moves);
+            piece = ai_pick_piece(&legal_moves, &game_state);
+
+            if(piece != -1) {
+                move = rand_r(&seed) % legal_moves.moves_per_piece[piece];
+                result = do_move(piece, move, &legal_moves, &game_state);
+                if(result == 1) {
+                    draws++;
+                    break;
+                } else if(result == 2) {
+                    white_wins++;
+                    break;
+                } else if(result == 3) {
+                    black_wins++;
+                    break;
+                }
+            } else {
+                switch(game_state.turn) {
+                    case 0:
+                        black_wins++;
+                        break;
+                    case 1:
+                        white_wins++;
+                        break;
+                }
+                break;
+            }
+            moves++;
+            total_moves++;
+            if(moves > 150) {
+                draws++;
+                break;
+            }
+        }
+    }
+
+    ctr->white_wins = white_wins;
+    ctr->draws = draws;
+    ctr->black_wins = black_wins;
+    ctr->total_moves = total_moves;
+
+    pthread_exit(NULL);
+}
+
+int main(int argc, char **argv) {
+    //int white_wins = 0;
+    //int black_wins = 0;
+    //int draws = 0;
+
+    /*pthread_t thread_id1;
+    //pthread_t thread_id2;
+    struct ComputeThreadResults ctr1;
+    ctr1.white_wins = 0;
+    ctr1.draws = 0;
+    ctr1.black_wins = 0;
+    struct ComputeThreadResults ctr2;
+    ctr2.white_wins = 0;
+    ctr2.draws = 0;
+    ctr2.black_wins = 0;
     
-    initialise_state(&gameState);
+    pthread_create(&thread_id1, NULL, calculate_results_thread, (void *)&ctr1);
+    //pthread_create(&thread_id2, NULL, calculate_results_thread, (void *)&ctr2);
+    pthread_join(thread_id1, NULL);
+    //pthread_join(thread_id2, NULL);
+
+    printf("W|D|L: %d, %d, %d\n", ctr1.white_wins, ctr1.draws, ctr1.black_wins);
+    //printf("W|D|L: %d, %d, %d\n", ctr2.white_wins, ctr2.draws, ctr2.black_wins);*/
+
+    pthread_t threads[NUM_THREADS];
+    struct ComputeThreadResults ctrs[NUM_THREADS];
+    for(int i=0;i<NUM_THREADS;i++) {
+        ctrs[i].white_wins = 0;
+        ctrs[i].draws = 0;
+        ctrs[i].black_wins = 0;
+        ctrs[i].total_moves = 0;
+        pthread_create(&threads[i], NULL, calculate_results_thread, (void *)&ctrs[i]);
+    }
+    for(int i=0;i<NUM_THREADS;i++) {
+        pthread_join(threads[i], NULL);
+        printf("Moves / W|D|L: %d / %d, %d, %d\n", ctrs[i].total_moves, ctrs[i].white_wins, ctrs[i].draws, ctrs[i].black_wins);
+    }
+
+    /*initialise_state(&gameState);
     draw_board(&gameState);
 
-    int i;
-    for(i=0;i<1000000;i++) {
+    for(int i=0;i<1000000;i++) {
         initialise_state(&gameState);
         moves = 0;
         while(1) {
@@ -593,11 +679,11 @@ int main(int argc, char **argv) {
             printf("Moves: %ld\n", total_moves);
             printf("W|D|L: %d, %d, %d\n", white_wins, draws, black_wins);
         }
-    }
+    }*/
 
     //draw_board(&gameState);
-    printf("Moves: %ld\n", total_moves);
-    printf("W|D|L: %d, %d, %d\n", white_wins, draws, black_wins);
+    //printf("Moves: %ld\n", total_moves);
+    //printf("W|D|L: %d, %d, %d\n", white_wins, draws, black_wins);
 
     return 0;
 }

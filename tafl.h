@@ -1,6 +1,7 @@
 #include <stdint.h>
 
 #define BLACK_PIECE_COUNT 24
+#define NUM_THREADS 2
 
 struct State {
     uint8_t board[11][11];
@@ -16,6 +17,13 @@ struct MoveSet {
     uint8_t moves[BLACK_PIECE_COUNT][120][2];
     uint8_t moves_per_piece[BLACK_PIECE_COUNT];
     short int move_count;
+};
+
+struct ComputeThreadResults {
+    int white_wins;
+    int draws;
+    int black_wins;
+    int total_moves;
 };
 
 void draw_board(struct State *state);
