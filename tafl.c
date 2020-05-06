@@ -512,7 +512,7 @@ void draw_board(struct State *state) {
     printf("\n\n");
 }
 
-int8_t ai_pick_piece(struct MoveSet *moves, struct State *state) {
+int8_t ai_pick_piece(struct MoveSet *moves, struct State *state, unsigned int *seed) {
     int8_t good_piece = -1;
     uint8_t i = 0;
     uint8_t piece = 0;
@@ -520,10 +520,10 @@ int8_t ai_pick_piece(struct MoveSet *moves, struct State *state) {
     while(good_piece == -1 && i < 100) {
         switch(state->turn) {
             case 0:
-                piece = rand() % (state->white_count+1);
+                piece = rand_r(seed) % (state->white_count+1);
                 break;
             case 1:
-                piece = rand() % (state->black_count);
+                piece = rand_r(seed) % (state->black_count);
                 break;
         }
         if(moves->moves_per_piece[piece] > 0) good_piece = piece;
@@ -545,14 +545,14 @@ void *calculate_results_thread(void *arg) {
     int draws = 0;
     int black_wins = 0;
     int total_moves = 0;
-    unsigned int seed = time(NULL);
+    unsigned int seed = time(NULL)+ctr->t_id;
 
     for(int i=0;i<100000;i++) {
         initialise_state(&game_state);
         moves = 0;
         while(1) {
             list_legal_moves(game_state.turn+1, &game_state, &legal_moves);
-            piece = ai_pick_piece(&legal_moves, &game_state);
+            piece = ai_pick_piece(&legal_moves, &game_state, &seed);
 
             if(piece != -1) {
                 move = rand_r(&seed) % legal_moves.moves_per_piece[piece];
@@ -600,25 +600,6 @@ int main(int argc, char **argv) {
     //int black_wins = 0;
     //int draws = 0;
 
-    /*pthread_t thread_id1;
-    //pthread_t thread_id2;
-    struct ComputeThreadResults ctr1;
-    ctr1.white_wins = 0;
-    ctr1.draws = 0;
-    ctr1.black_wins = 0;
-    struct ComputeThreadResults ctr2;
-    ctr2.white_wins = 0;
-    ctr2.draws = 0;
-    ctr2.black_wins = 0;
-    
-    pthread_create(&thread_id1, NULL, calculate_results_thread, (void *)&ctr1);
-    //pthread_create(&thread_id2, NULL, calculate_results_thread, (void *)&ctr2);
-    pthread_join(thread_id1, NULL);
-    //pthread_join(thread_id2, NULL);
-
-    printf("W|D|L: %d, %d, %d\n", ctr1.white_wins, ctr1.draws, ctr1.black_wins);
-    //printf("W|D|L: %d, %d, %d\n", ctr2.white_wins, ctr2.draws, ctr2.black_wins);*/
-
     pthread_t threads[NUM_THREADS];
     struct ComputeThreadResults ctrs[NUM_THREADS];
     for(int i=0;i<NUM_THREADS;i++) {
@@ -626,64 +607,13 @@ int main(int argc, char **argv) {
         ctrs[i].draws = 0;
         ctrs[i].black_wins = 0;
         ctrs[i].total_moves = 0;
+        ctrs[i].t_id = i;
         pthread_create(&threads[i], NULL, calculate_results_thread, (void *)&ctrs[i]);
     }
     for(int i=0;i<NUM_THREADS;i++) {
         pthread_join(threads[i], NULL);
         printf("Moves / W|D|L: %d / %d, %d, %d\n", ctrs[i].total_moves, ctrs[i].white_wins, ctrs[i].draws, ctrs[i].black_wins);
     }
-
-    /*initialise_state(&gameState);
-    draw_board(&gameState);
-
-    for(int i=0;i<1000000;i++) {
-        initialise_state(&gameState);
-        moves = 0;
-        while(1) {
-            list_legal_moves(gameState.turn+1, &gameState, &legal_moves);
-            piece = ai_pick_piece(&legal_moves, &gameState);
-
-            if(piece != -1) {
-                move = rand() % legal_moves.moves_per_piece[piece];
-                result = do_move(piece, move, &legal_moves, &gameState);
-                if(result == 1) {
-                    draws++;
-                    break;
-                } else if(result == 2) {
-                    white_wins++;
-                    break;
-                } else if(result == 3) {
-                    black_wins++;
-                    break;
-                }
-                total_moves++;
-            } else {
-                switch(gameState.turn) {
-                    case 0:
-                        black_wins++;
-                        break;
-                    case 1:
-                        white_wins++;
-                        break;
-                }
-                break;
-            }
-            moves++;
-            if(moves > 150) {
-                draws++;
-                break;
-            }
-        }
-        if(i%50000 == 0) {
-            draw_board(&gameState);
-            printf("Moves: %ld\n", total_moves);
-            printf("W|D|L: %d, %d, %d\n", white_wins, draws, black_wins);
-        }
-    }*/
-
-    //draw_board(&gameState);
-    //printf("Moves: %ld\n", total_moves);
-    //printf("W|D|L: %d, %d, %d\n", white_wins, draws, black_wins);
 
     return 0;
 }
