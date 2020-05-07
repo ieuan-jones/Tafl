@@ -1,45 +1,9 @@
-#include "tafl.h"
-#include <pthread.h>
 #include <stdio.h>
-#include <stdint.h>
-#include <string.h>
-#include <unistd.h>
 #include <stdlib.h>
-#include <time.h>
+#include <string.h>
 
-char type_to_side(char type) {
-    switch(type) {
-        case 1:
-            return 1;
-            break;
-        case 2:
-            return 2;
-            break;
-        case 3:
-            return 1;
-            break;
-        default:
-            return 0;
-            break;
-    }
-}
-
-char opposite_side(char type) {
-    switch(type) {
-        case 1:
-            return 2;
-            break;
-        case 2:
-            return 1;
-            break;
-        case 3:
-            return 2;
-            break;
-        default:
-            return 0;
-            break;
-    }
-}
+#include "taflboard.h"
+#include "taflutil.h"
 
 uint8_t is_restricted_tile(uint8_t x, uint8_t y, uint8_t type) {
     if(type == 3) return 0;
@@ -48,6 +12,27 @@ uint8_t is_restricted_tile(uint8_t x, uint8_t y, uint8_t type) {
     if(x == 10 && y == 0) return 1;
     if(x == 10 && y == 10) return 1;
     if(x == 5 && y == 5) return 1;
+    return 0;
+}
+
+uint8_t tile_has_takeable_piece(uint8_t x, uint8_t y, uint8_t type, struct State *state) {
+    // Does the tile have a piece that can be taken?
+    uint8_t checked_square = state->board[y][x];
+
+    if(checked_square != 0 && checked_square != 3 && type_to_side(checked_square) != type_to_side(type))
+        return 1;
+
+    return 0;
+}
+
+uint8_t tile_has_defender(uint8_t x, uint8_t y, uint8_t type, struct State *state) {
+    // Can tile can be used for taking?
+    uint8_t checked_square = type_to_side(state->board[y][x]);
+
+    if((checked_square != 0 && checked_square == type_to_side(type)) ||
+            is_restricted_tile(x, y, 1))
+            return 1;
+
     return 0;
 }
 
@@ -136,6 +121,79 @@ void move_piece(uint8_t from_x, uint8_t from_y, uint8_t to_x, uint8_t to_y, uint
             state->king[1] = to_y;
             break;
     }
+}
+
+int do_captures(uint8_t to_x, uint8_t to_y, uint8_t type, struct State *state) {
+    if(to_y > 1 && to_y < 9) {
+        if(tile_has_takeable_piece(to_x, to_y-1, type, state) && tile_has_defender(to_x, to_y-2, type, state)) {
+            remove_piece(to_x, to_y-1, opposite_side(type), state);
+            return 1;
+        }
+        if(tile_has_takeable_piece(to_x, to_y+1, type, state) && tile_has_defender(to_x, to_y+2, type, state)) {
+            remove_piece(to_x, to_y+1, opposite_side(type), state);
+            return 1;
+        }
+    }
+    if(to_x > 1 && to_x < 9) {
+        if(tile_has_takeable_piece(to_x-1, to_y, type, state) && tile_has_defender(to_x-2, to_y, type, state)) {
+            remove_piece(to_x-1, to_y, opposite_side(type), state);
+            return 1;
+        }
+        if(tile_has_takeable_piece(to_x+1, to_y, type, state) && tile_has_defender(to_x+2, to_y, type, state)) {
+            remove_piece(to_x+1, to_y, opposite_side(type), state);
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+int do_move(uint8_t piece, uint8_t move, struct MoveSet *moves, struct State *state) {
+    uint8_t from_x = 0;
+    uint8_t from_y = 0;
+    uint8_t type = 0;
+    uint8_t result = 0;
+
+    switch(state->turn) {
+        case 0:
+            if(piece < state->white_count) {
+                from_x = state->white[piece][0];
+                from_y = state->white[piece][1];
+                type = 1;
+            } else {
+                from_x = state->king[0];
+                from_y = state->king[1];
+                type = 3;
+            }
+            break;
+        case 1:
+            from_x = state->black[piece][0];
+            from_y = state->black[piece][1];
+            type = 2;
+            break;
+    }
+
+    move_piece(
+        from_x,
+        from_y,
+        moves->moves[piece][move][0],
+        moves->moves[piece][move][1],
+        type,
+        state
+    );
+
+    do_captures(
+        moves->moves[piece][move][0],
+        moves->moves[piece][move][1],
+        type,
+        state
+    );
+
+    result = state_of_game(state);
+
+    state->turn = 1-state->turn;
+
+    return result;
 }
 
 char state_of_game(struct State *state) {
@@ -262,155 +320,6 @@ char state_of_game(struct State *state) {
     return 0;
 }
 
-uint8_t tile_has_takeable_piece(uint8_t x, uint8_t y, uint8_t type, struct State *state) {
-    // Does the tile have a piece that can be taken?
-    uint8_t checked_square = state->board[y][x];
-
-    if(checked_square != 0 && checked_square != 3 && type_to_side(checked_square) != type_to_side(type))
-        return 1;
-
-    return 0;
-}
-
-uint8_t tile_has_defender(uint8_t x, uint8_t y, uint8_t type, struct State *state) {
-    // Can tile can be used for taking?
-    uint8_t checked_square = type_to_side(state->board[y][x]);
-
-    if((checked_square != 0 && checked_square == type_to_side(type)) ||
-            is_restricted_tile(x, y, 1))
-            return 1;
-
-    return 0;
-}
-
-int do_captures(uint8_t to_x, uint8_t to_y, uint8_t type, struct State *state) {
-    if(to_y > 1 && to_y < 9) {
-        if(tile_has_takeable_piece(to_x, to_y-1, type, state) && tile_has_defender(to_x, to_y-2, type, state)) {
-            remove_piece(to_x, to_y-1, opposite_side(type), state);
-            return 1;
-        }
-        if(tile_has_takeable_piece(to_x, to_y+1, type, state) && tile_has_defender(to_x, to_y+2, type, state)) {
-            remove_piece(to_x, to_y+1, opposite_side(type), state);
-            return 1;
-        }
-    }
-    if(to_x > 1 && to_x < 9) {
-        if(tile_has_takeable_piece(to_x-1, to_y, type, state) && tile_has_defender(to_x-2, to_y, type, state)) {
-            remove_piece(to_x-1, to_y, opposite_side(type), state);
-            return 1;
-        }
-        if(tile_has_takeable_piece(to_x+1, to_y, type, state) && tile_has_defender(to_x+2, to_y, type, state)) {
-            remove_piece(to_x+1, to_y, opposite_side(type), state);
-            return 1;
-        }
-    }
-
-    return 0;
-}
-
-int do_move(uint8_t piece, uint8_t move, struct MoveSet *moves, struct State *state) {
-    uint8_t from_x = 0;
-    uint8_t from_y = 0;
-    uint8_t type = 0;
-    uint8_t result = 0;
-
-    switch(state->turn) {
-        case 0:
-            if(piece < state->white_count) {
-                from_x = state->white[piece][0];
-                from_y = state->white[piece][1];
-                type = 1;
-            } else {
-                from_x = state->king[0];
-                from_y = state->king[1];
-                type = 3;
-            }
-            break;
-        case 1:
-            from_x = state->black[piece][0];
-            from_y = state->black[piece][1];
-            type = 2;
-            break;
-    }
-
-    move_piece(
-        from_x,
-        from_y,
-        moves->moves[piece][move][0],
-        moves->moves[piece][move][1],
-        type,
-        state
-    );
-
-    do_captures(
-        moves->moves[piece][move][0],
-        moves->moves[piece][move][1],
-        type,
-        state
-    );
-
-    result = state_of_game(state);
-
-    state->turn = 1-state->turn;
-
-    return result;
-}
-
-void initialise_state(struct State *state) {
-    state->white_count = 0;
-    state->black_count = 0;
-    state->turn = 0;
-
-    for(int8_t x=0; x<11; x++) {
-        for(int8_t y=0; y<11; y++) {
-            add_piece(x, y, 0, state);
-        }
-    }
-
-    add_piece(3, 0, 2, state);
-    add_piece(4, 0, 2, state);
-    add_piece(5, 0, 2, state);
-    add_piece(6, 0, 2, state);
-    add_piece(7, 0, 2, state);
-    add_piece(5, 1, 2, state);
-
-    add_piece(3, 10, 2, state);
-    add_piece(4, 10, 2, state);
-    add_piece(5, 10, 2, state);
-    add_piece(6, 10, 2, state);
-    add_piece(7, 10, 2, state);
-    add_piece(5, 9, 2, state);
-
-    add_piece(0, 3, 2, state);
-    add_piece(0, 4, 2, state);
-    add_piece(0, 5, 2, state);
-    add_piece(0, 6, 2, state);
-    add_piece(0, 7, 2, state);
-    add_piece(1, 5, 2, state);
-
-    add_piece(10, 3, 2, state);
-    add_piece(10, 4, 2, state);
-    add_piece(10, 5, 2, state);
-    add_piece(10, 6, 2, state);
-    add_piece(10, 7, 2, state);
-    add_piece(9, 5, 2, state);
-
-    add_piece(5, 3, 1, state);
-    add_piece(4, 4, 1, state);
-    add_piece(5, 4, 1, state);
-    add_piece(6, 4, 1, state);
-    add_piece(3, 5, 1, state);
-    add_piece(4, 5, 1, state);
-    add_piece(6, 5, 1, state);
-    add_piece(7, 5, 1, state);
-    add_piece(4, 6, 1, state);
-    add_piece(5, 6, 1, state);
-    add_piece(6, 6, 1, state);
-    add_piece(5, 7, 1, state);
-
-    add_piece(5, 5, 3, state);
-}
-
 uint8_t list_legal_moves_for_piece(uint8_t p_x, uint8_t p_y, uint8_t type, struct State *state, uint8_t moves[120][2]) {
     uint8_t moves_found = 0;
 
@@ -500,6 +409,61 @@ void list_legal_moves(uint8_t side, struct State *state, struct MoveSet *legal_m
     }*/
 }
 
+void initialise_state(struct State *state) {
+    state->white_count = 0;
+    state->black_count = 0;
+    state->turn = 0;
+
+    for(int8_t x=0; x<11; x++) {
+        for(int8_t y=0; y<11; y++) {
+            add_piece(x, y, 0, state);
+        }
+    }
+
+    add_piece(3, 0, 2, state);
+    add_piece(4, 0, 2, state);
+    add_piece(5, 0, 2, state);
+    add_piece(6, 0, 2, state);
+    add_piece(7, 0, 2, state);
+    add_piece(5, 1, 2, state);
+
+    add_piece(3, 10, 2, state);
+    add_piece(4, 10, 2, state);
+    add_piece(5, 10, 2, state);
+    add_piece(6, 10, 2, state);
+    add_piece(7, 10, 2, state);
+    add_piece(5, 9, 2, state);
+
+    add_piece(0, 3, 2, state);
+    add_piece(0, 4, 2, state);
+    add_piece(0, 5, 2, state);
+    add_piece(0, 6, 2, state);
+    add_piece(0, 7, 2, state);
+    add_piece(1, 5, 2, state);
+
+    add_piece(10, 3, 2, state);
+    add_piece(10, 4, 2, state);
+    add_piece(10, 5, 2, state);
+    add_piece(10, 6, 2, state);
+    add_piece(10, 7, 2, state);
+    add_piece(9, 5, 2, state);
+
+    add_piece(5, 3, 1, state);
+    add_piece(4, 4, 1, state);
+    add_piece(5, 4, 1, state);
+    add_piece(6, 4, 1, state);
+    add_piece(3, 5, 1, state);
+    add_piece(4, 5, 1, state);
+    add_piece(6, 5, 1, state);
+    add_piece(7, 5, 1, state);
+    add_piece(4, 6, 1, state);
+    add_piece(5, 6, 1, state);
+    add_piece(6, 6, 1, state);
+    add_piece(5, 7, 1, state);
+
+    add_piece(5, 5, 3, state);
+}
+
 void draw_board(struct State *state) {
     for(int8_t y=0; y<11; y++) {
         for(int8_t x=0; x<11; x++) {
@@ -510,110 +474,4 @@ void draw_board(struct State *state) {
     }
     for(int x=0; x<11; x++) printf("=");
     printf("\n\n");
-}
-
-int8_t ai_pick_piece(struct MoveSet *moves, struct State *state, unsigned int *seed) {
-    int8_t good_piece = -1;
-    uint8_t i = 0;
-    uint8_t piece = 0;
-
-    while(good_piece == -1 && i < 100) {
-        switch(state->turn) {
-            case 0:
-                piece = rand_r(seed) % (state->white_count+1);
-                break;
-            case 1:
-                piece = rand_r(seed) % (state->black_count);
-                break;
-        }
-        if(moves->moves_per_piece[piece] > 0) good_piece = piece;
-        i++;
-    }
-
-    return good_piece;
-}
-
-void *calculate_results_thread(void *arg) {
-    struct ComputeThreadResults *ctr = (struct ComputeThreadResults *)arg;
-    struct State game_state;
-    struct MoveSet legal_moves;
-    int8_t piece;
-    short int move;
-    uint8_t result;
-    short int moves;
-    int white_wins = 0;
-    int draws = 0;
-    int black_wins = 0;
-    int total_moves = 0;
-    unsigned int seed = time(NULL)+ctr->t_id;
-
-    for(int i=0;i<100000;i++) {
-        initialise_state(&game_state);
-        moves = 0;
-        while(1) {
-            list_legal_moves(game_state.turn+1, &game_state, &legal_moves);
-            piece = ai_pick_piece(&legal_moves, &game_state, &seed);
-
-            if(piece != -1) {
-                move = rand_r(&seed) % legal_moves.moves_per_piece[piece];
-                result = do_move(piece, move, &legal_moves, &game_state);
-                if(result == 1) {
-                    draws++;
-                    break;
-                } else if(result == 2) {
-                    white_wins++;
-                    break;
-                } else if(result == 3) {
-                    black_wins++;
-                    break;
-                }
-            } else {
-                switch(game_state.turn) {
-                    case 0:
-                        black_wins++;
-                        break;
-                    case 1:
-                        white_wins++;
-                        break;
-                }
-                break;
-            }
-            moves++;
-            total_moves++;
-            if(moves > 150) {
-                draws++;
-                break;
-            }
-        }
-    }
-
-    ctr->white_wins = white_wins;
-    ctr->draws = draws;
-    ctr->black_wins = black_wins;
-    ctr->total_moves = total_moves;
-
-    pthread_exit(NULL);
-}
-
-int main(int argc, char **argv) {
-    //int white_wins = 0;
-    //int black_wins = 0;
-    //int draws = 0;
-
-    pthread_t threads[NUM_THREADS];
-    struct ComputeThreadResults ctrs[NUM_THREADS];
-    for(int i=0;i<NUM_THREADS;i++) {
-        ctrs[i].white_wins = 0;
-        ctrs[i].draws = 0;
-        ctrs[i].black_wins = 0;
-        ctrs[i].total_moves = 0;
-        ctrs[i].t_id = i;
-        pthread_create(&threads[i], NULL, calculate_results_thread, (void *)&ctrs[i]);
-    }
-    for(int i=0;i<NUM_THREADS;i++) {
-        pthread_join(threads[i], NULL);
-        printf("Moves / W|D|L: %d / %d, %d, %d\n", ctrs[i].total_moves, ctrs[i].white_wins, ctrs[i].draws, ctrs[i].black_wins);
-    }
-
-    return 0;
 }
