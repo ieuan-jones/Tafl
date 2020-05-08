@@ -29,6 +29,11 @@ struct ComputeThreadResults {
     int t_id;
 };
 
+struct TaflMove {
+    uint8_t piece;
+    uint8_t move;
+};
+
 uint8_t is_restricted_tile(uint8_t x, uint8_t y, uint8_t type);
 uint8_t tile_has_takeable_piece(uint8_t x, uint8_t y, uint8_t type, struct State *state);
 uint8_t tile_has_defender(uint8_t x, uint8_t y, uint8_t type, struct State *state);
@@ -37,7 +42,7 @@ void add_piece(uint8_t x, uint8_t y, uint8_t type, struct State *state);
 void remove_piece(uint8_t x, uint8_t y, uint8_t type, struct State *state);
 void move_piece(uint8_t from_x, uint8_t from_y, uint8_t to_x, uint8_t to_y, uint8_t type, struct State *state);
 int do_move(uint8_t piece, uint8_t move, struct MoveSet *moves, struct State *state);
-int do_captures(uint8_t to_x, uint8_t to_y, uint8_t type, struct State *state);
+uint8_t do_captures(uint8_t to_x, uint8_t to_y, uint8_t type, struct State *state);
 
 char state_of_game(struct State *state);
 uint8_t list_legal_moves_for_piece(uint8_t p_x, uint8_t p_y, uint8_t type, struct State *state, uint8_t moves[120][2]);

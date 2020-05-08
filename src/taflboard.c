@@ -123,7 +123,7 @@ void move_piece(uint8_t from_x, uint8_t from_y, uint8_t to_x, uint8_t to_y, uint
     }
 }
 
-int do_captures(uint8_t to_x, uint8_t to_y, uint8_t type, struct State *state) {
+uint8_t do_captures(uint8_t to_x, uint8_t to_y, uint8_t type, struct State *state) {
     if(to_y > 1 && to_y < 9) {
         if(tile_has_takeable_piece(to_x, to_y-1, type, state) && tile_has_defender(to_x, to_y-2, type, state)) {
             remove_piece(to_x, to_y-1, opposite_side(type), state);
@@ -224,97 +224,85 @@ char state_of_game(struct State *state) {
         return 3;
     }
 
-    // White surrounded
-    uint8_t broken = 0;
-    uint8_t first_colour = 0;
-    uint8_t last_colour = 0;
-    int8_t left = 0;
-    int8_t right = 0;
-    int8_t p_left = 0;
-    int8_t p_right = 0;
-    for(int8_t x=0;x<11;x++) {
-        first_colour = 0;
-        last_colour = 0;
-        p_left = left;
-        p_right = right;
-        left = -1;
-        right = -1;
-        for(int8_t y=0;y<11;y++) {
-            switch(type_to_side(state->board[y][x])) {
-                case 0:
-                    break;
-                case 1:
-                    if(first_colour == 0) first_colour = 1;
-                    last_colour = 1;
-                    break;
-                case 2:
-                    if(left == -1) left = x;
-                    if(first_colour == 0) first_colour = 2;
-                    right = x;
-                    last_colour = 2;
-                    break;
-            }
-        }
-        if(first_colour == 1) {
-            broken = 1;
-            break;
-        }
-        if(last_colour == 1) {
-            broken = 1;
-            break;
-        }
-        if(x > 0 && left > -1 && abs(p_left-left) > 1) {
-            broken = 1;
-            break;
-        }
-        if(x > 0 && right > -1 && abs(p_right-right) > 1) {
-            broken = 1;
-            break;
-        }
-        if(broken) return 0;
-    }
-
-    for(int8_t y=0;y<11;y++) {
-        first_colour = 0;
-        last_colour = 0;
-        p_left = left;
-        p_right = right;
-        left = -1;
-        right = -1;
+    if(state->turn == 1) {
+        // White surrounded
+        uint8_t broken = 0;
+        uint8_t first_colour = 0;
+        uint8_t last_colour = 0;
+        int8_t left = 0;
+        int8_t right = 0;
+        int8_t p_left = 0;
+        int8_t p_right = 0;
         for(int8_t x=0;x<11;x++) {
-            switch(type_to_side(state->board[y][x])) {
-                case 0:
-                    break;
-                case 1:
-                    if(first_colour == 0) first_colour = 1;
-                    last_colour = 1;
-                    break;
-                case 2:
-                    if(left == -1) left = x;
-                    if(first_colour == 0) first_colour = 2;
-                    right = x;
-                    last_colour = 2;
-                    break;
+            first_colour = 0;
+            last_colour = 0;
+            p_left = left;
+            p_right = right;
+            left = -1;
+            right = -1;
+            for(int8_t y=0;y<11;y++) {
+                switch(type_to_side(state->board[y][x])) {
+                    case 0:
+                        break;
+                    case 1:
+                        if(first_colour == 0) return 0; // Outside white
+                        last_colour = 1;
+                        break;
+                    case 2:
+                        if(left == -1) {
+                            if(abs(p_left-x) > 1) return 0;
+                            left = x;
+                        }
+                        if(first_colour == 0) first_colour = 2;
+                        right = x;
+                        last_colour = 2;
+                        break;
+                }
+            }
+            if(first_colour == 1 || last_colour == 1 || 
+                (x > 0 && left > -1 && abs(p_left-left) > 1) ||
+                (x > 0 && right > -1 && abs(p_right-right) > 1)) {
+                return 0;
             }
         }
-        if(first_colour == 1) {
-            broken = 1;
-            break;
-        }
-        if(y > 0 && left > -1 && abs(p_left-left) > 1) {
-           broken = 1;
-           break;
-        }
-        if(y > 0 && right > -1 && abs(p_right-right) > 1) {
-            broken = 1;
-            break;
-        }
-        if(broken) return 0;
-    }
 
-    if(!broken) {
-        printf("Surrounded!");
-        return 3;
+        for(int8_t y=0;y<11;y++) {
+            first_colour = 0;
+            last_colour = 0;
+            p_left = left;
+            p_right = right;
+            left = -1;
+            right = -1;
+            for(int8_t x=0;x<11;x++) {
+                switch(type_to_side(state->board[y][x])) {
+                    case 0:
+                        break;
+                    case 1:
+                        if(first_colour == 0) return 0; // Outside white
+                        last_colour = 1;
+                        break;
+                    case 2:
+                        if(left == -1) {
+                            if(abs(p_left-x) > 1) return 0;
+                            left = x;
+                        }
+                        if(first_colour == 0) first_colour = 2;
+                        right = x;
+                        last_colour = 2;
+                        break;
+                }
+            }
+            if(first_colour == 1 || last_colour == 1 || 
+                (y > 0 && left > -1 && abs(p_left-left) > 1) ||
+                (y > 0 && right > -1 && abs(p_right-right) > 1)) {
+                return 0;
+            }
+        }
+
+        if(!broken) {
+            printf("Surrounded!");
+            return 3;
+        }
     }
 
     return 0;

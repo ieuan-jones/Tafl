@@ -4,35 +4,16 @@
 #include <stdlib.h>
 #include <time.h>
 
+#include "ai.h"
 #include "tafl.h"
 #include "taflboard.h"
 #include "taflutil.h"
-
-int8_t ai_pick_piece(struct MoveSet *moves, struct State *state, unsigned int *seed) {
-    int8_t good_piece = -1;
-    uint8_t i = 0;
-    uint8_t piece = 0;
-
-    while(good_piece == -1 && i < 100) {
-        switch(state->turn) {
-            case 0:
-                piece = rand_r(seed) % (state->white_count+1);
-                break;
-            case 1:
-                piece = rand_r(seed) % (state->black_count);
-                break;
-        }
-        if(moves->moves_per_piece[piece] > 0) good_piece = piece;
-        i++;
-    }
-
-    return good_piece;
-}
 
 void *calculate_results_thread(void *arg) {
     struct ComputeThreadResults *ctr = (struct ComputeThreadResults *)arg;
     struct State game_state;
     struct MoveSet legal_moves;
+    struct TaflMove ai_move;
     int8_t piece;
     short int move;
     uint8_t result;
@@ -48,35 +29,42 @@ void *calculate_results_thread(void *arg) {
         moves = 0;
         while(1) {
             list_legal_moves(game_state.turn+1, &game_state, &legal_moves);
-            piece = ai_pick_piece(&legal_moves, &game_state, &seed);
 
-            if(piece != -1) {
-                move = rand_r(&seed) % legal_moves.moves_per_piece[piece];
-                result = do_move(piece, move, &legal_moves, &game_state);
-                if(result == 1) {
-                    draws++;
-                    break;
-                } else if(result == 2) {
-                    white_wins++;
-                    break;
-                } else if(result == 3) {
-                    black_wins++;
+            if(ai_pick_move(&legal_moves, &game_state, &ai_move))
+                result = do_move(ai_move.piece, ai_move.move, &legal_moves, &game_state);
+            else {
+                piece = ai_pick_piece(&legal_moves, &game_state, &seed);
+
+                if(piece != -1) {
+                    move = rand_r(&seed) % legal_moves.moves_per_piece[piece];
+                    result = do_move(piece, move, &legal_moves, &game_state);
+                } else {
+                    switch(game_state.turn) {
+                        case 0:
+                            black_wins++;
+                            break;
+                        case 1:
+                            white_wins++;
+                            break;
+                    }
                     break;
                 }
-            } else {
-                switch(game_state.turn) {
-                    case 0:
-                        black_wins++;
-                        break;
-                    case 1:
-                        white_wins++;
-                        break;
-                }
+            }
+
+            if(result == 1) {
+                draws++;
+                break;
+            } else if(result == 2) {
+                white_wins++;
+                break;
+            } else if(result == 3) {
+                black_wins++;
                 break;
             }
+
             moves++;
             total_moves++;
-            if(moves > 150) {
+            if(moves > 100) {
                 draws++;
                 break;
             }

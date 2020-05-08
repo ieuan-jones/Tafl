@@ -5,7 +5,7 @@
 
 #include "taflboard.h"
 
-#define NUM_THREADS 4
+#define NUM_THREADS 2
 
 void draw_board(struct State *state);
 
