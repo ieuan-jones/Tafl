@@ -30,7 +30,7 @@ void *calculate_results_thread(void *arg) {
         while(1) {
             list_legal_moves(game_state.turn+1, &game_state, &legal_moves);
 
-            if(ai_pick_move(&legal_moves, &game_state, &ai_move))
+            if(ai_pick_winning_move(&legal_moves, &game_state, &ai_move))
                 result = do_move(ai_move.piece, ai_move.move, &legal_moves, &game_state);
             else {
                 piece = ai_pick_piece(&legal_moves, &game_state, &seed);
